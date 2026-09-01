@@ -1,0 +1,97 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, sans-serif;
+  background: #0B0B0F;
+  color: #F5F5F7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  background: #0B0B0F;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0B0F;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2A2A35;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1F1F28;
+}
+
+@layer components {
+  .premium-card {
+    @apply rounded-card border border-border bg-surface shadow-premium;
+    background-image:
+      linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.025),
+        rgba(255, 255, 255, 0) 55%
+      );
+  }
+
+  .premium-input {
+    @apply w-full rounded-input border border-border bg-background px-3.5 py-2.5 text-sm text-text-primary outline-none transition duration-200 placeholder:text-text-secondary/60 focus:border-accent-gold focus:ring-1 focus:ring-accent-gold/30;
+  }
+
+  .gold-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-button bg-accent-gold px-4 py-2.5 text-sm font-semibold text-background transition duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50;
+  }
+
+  .ghost-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-button border border-border bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition duration-150 hover:bg-surface-hover active:scale-[0.98] disabled:opacity-50;
+  }
+
+  .danger-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-button border border-accent-red/30 bg-accent-red/10 px-4 py-2.5 text-sm font-medium text-accent-red transition duration-150 hover:bg-accent-red/15 active:scale-[0.98] disabled:opacity-50;
+  }
+
+  .page-title {
+    @apply font-display text-2xl font-semibold tracking-tight text-text-primary md:text-3xl;
+  }
+
+  .muted {
+    @apply text-sm text-text-secondary;
+  }
+}
