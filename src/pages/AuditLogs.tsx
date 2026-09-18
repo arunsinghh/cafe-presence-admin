@@ -1,173 +1,73 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, RefreshCw, Terminal } from "lucide-react";
 
-import {
-  ChevronDown,
-  ChevronRight,
-  RefreshCw,
-  Terminal
-} from "lucide-react";
-
-import api, {
-  apiMessage
-} from "../services/api";
-
-import type {
-  AuditLog
-} from "../types";
-
+import api, { apiMessage, unwrapData } from "../services/api";
+import type { AuditLog } from "../types";
 import Loading from "../components/Loading";
-
-import {
-  formatDate,
-  prettyAction
-} from "../lib/format";
+import SearchInput from "../components/SearchInput";
+import ErrorBanner from "../components/ErrorBanner";
+import { formatDate, prettyAction } from "../lib/format";
 
 export default function AuditLogs() {
-  const [
-    logs,
-    setLogs
-  ] = useState<AuditLog[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [action, setAction] = useState("ALL");
+  const [employee, setEmployee] = useState("");
+  const [expanded, setExpanded] = useState<number | null>(null);
 
-  const [
-    loading,
-    setLoading
-  ] = useState(true);
-
-  const [
-    error,
-    setError
-  ] = useState("");
-
-  const [
-    action,
-    setAction
-  ] = useState("ALL");
-
-  const [
-    employee,
-    setEmployee
-  ] = useState("");
-
-  const [
-    expanded,
-    setExpanded
-  ] = useState<number | null>(
-    null
-  );
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const response =
-        await api.get(
-          "/employees/audit-logs?limit=100"
-        );
-
-      setLogs(
-        response.data.data?.logs ??
-          response.data.data ??
-          []
-      );
+      const response = await api.get("/employees/audit-logs?limit=100");
+      const resData = unwrapData<{ logs?: AuditLog[] } | AuditLog[]>(response);
+      const auditList = Array.isArray(resData) ? resData : (resData?.logs ?? []);
+      setLogs(auditList);
     } catch (requestError) {
-      setError(
-        apiMessage(
-          requestError,
-          "Unable to load audit logs."
-        )
-      );
+      setError(apiMessage(requestError, "Unable to load audit logs."));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
-  const actions =
-    useMemo(
-      () =>
-        Array.from(
-          new Set(
-            logs.map(
-              (log) =>
-                log.action
-            )
-          )
-        ).sort(),
-      [logs]
-    );
+  const actions = useMemo(
+    () => Array.from(new Set(logs.map((log) => log.action))).sort(),
+    [logs]
+  );
 
-  const filtered =
-    logs.filter(
-      (log) => {
-        const actionMatches =
-          action === "ALL" ||
-          log.action === action;
+  const filtered = useMemo(() => {
+    return logs.filter((log) => {
+      const actionMatches = action === "ALL" || log.action === action;
+      const employeeMatches =
+        !employee ||
+        String(log.employeeId) === employee ||
+        log.employee?.name?.toLowerCase().includes(employee.toLowerCase());
 
-        const employeeMatches =
-          !employee ||
-          String(
-            log.employeeId
-          ) === employee ||
-          log.employee?.name
-            ?.toLowerCase()
-            .includes(
-              employee.toLowerCase()
-            );
+      return actionMatches && employeeMatches;
+    });
+  }, [logs, action, employee]);
 
-        return (
-          actionMatches &&
-          employeeMatches
-        );
-      }
-    );
-
-  const actionClass =
-    (value: string) => {
-      if (
-        value.includes(
-          "REVOKE"
-        ) ||
-        value.includes(
-          "DELETE"
-        )
-      ) {
-        return "text-accent-red";
-      }
-
-      if (
-        value.includes(
-          "APPROVE"
-        ) ||
-        value.includes(
-          "CREATE"
-        )
-      ) {
-        return "text-accent-green";
-      }
-
-      if (
-        value.includes(
-          "UPDATE"
-        )
-      ) {
-        return "text-accent-blue";
-      }
-
-      return "text-text-secondary";
-    };
+  const actionClass = (value: string) => {
+    if (value.includes("REVOKE") || value.includes("DELETE")) {
+      return "text-accent-red";
+    }
+    if (value.includes("APPROVE") || value.includes("CREATE")) {
+      return "text-accent-green";
+    }
+    if (value.includes("UPDATE")) {
+      return "text-accent-blue";
+    }
+    return "text-text-secondary";
+  };
 
   if (loading) {
-    return (
-      <Loading label="Loading audit trail" />
-    );
+    return <Loading label="Loading audit trail" />;
   }
 
   return (
@@ -178,70 +78,40 @@ export default function AuditLogs() {
             Security / Forensics
           </p>
 
-          <h1 className="page-title">
-            Audit Logs
-          </h1>
+          <h1 className="page-title">Audit Logs</h1>
 
           <p className="mt-2 muted">
-            Terminal-style trail of
-            sensitive employee actions.
+            Terminal-style trail of sensitive employee actions.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            void load()
-          }
-          className="ghost-button"
-        >
+        <button type="button" onClick={() => void load()} className="ghost-button">
           <RefreshCw size={16} />
           Refresh
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-input border border-accent-red/30 bg-accent-red/10 p-3 text-sm text-accent-red">
-          {error}
-        </div>
-      )}
+      <ErrorBanner message={error} />
 
       <div className="premium-card p-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <input
-            className="premium-input font-mono"
+          <SearchInput
             placeholder="Employee name or ID"
             value={employee}
-            onChange={(event) =>
-              setEmployee(
-                event.target.value
-              )
-            }
+            onChangeValue={setEmployee}
           />
 
           <select
             className="premium-input font-mono"
             value={action}
-            onChange={(event) =>
-              setAction(
-                event.target.value
-              )
-            }
+            onChange={(event) => setAction(event.target.value)}
           >
-            <option value="ALL">
-              ALL ACTIONS
-            </option>
-
-            {actions.map(
-              (value) => (
-                <option
-                  key={value}
-                  value={value}
-                >
-                  {value}
-                </option>
-              )
-            )}
+            <option value="ALL">ALL ACTIONS</option>
+            {actions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -252,134 +122,69 @@ export default function AuditLogs() {
             <thead className="border-b border-border bg-background text-[10px] uppercase tracking-wider text-text-secondary">
               <tr>
                 <th className="w-10 px-3 py-3" />
-
-                <th className="px-3 py-3">
-                  Timestamp
-                </th>
-
-                <th className="px-3 py-3">
-                  Employee
-                </th>
-
-                <th className="px-3 py-3">
-                  Action
-                </th>
-
-                <th className="px-3 py-3">
-                  Entity
-                </th>
-
-                <th className="px-3 py-3">
-                  Entity ID
-                </th>
+                <th className="px-3 py-3">Timestamp</th>
+                <th className="px-3 py-3">Employee</th>
+                <th className="px-3 py-3">Action</th>
+                <th className="px-3 py-3">Entity</th>
+                <th className="px-3 py-3">Entity ID</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-border">
-              {filtered.map(
-                (log) => (
-                  <>
-                    <tr
-                      key={log.id}
-                      onClick={() =>
-                        setExpanded(
-                          expanded ===
-                            log.id
-                            ? null
-                            : log.id
-                        )
-                      }
-                      className="cursor-pointer transition hover:bg-surface-hover"
-                    >
-                      <td className="px-3 py-3 text-text-secondary">
-                        {expanded ===
-                        log.id ? (
-                          <ChevronDown
-                            size={15}
-                          />
-                        ) : (
-                          <ChevronRight
-                            size={15}
-                          />
-                        )}
-                      </td>
+              {filtered.map((log) => (
+                <Fragment key={log.id}>
+                  <tr
+                    onClick={() => setExpanded(expanded === log.id ? null : log.id)}
+                    className="cursor-pointer transition hover:bg-surface-hover"
+                  >
+                    <td className="px-3 py-3 text-text-secondary">
+                      {expanded === log.id ? (
+                        <ChevronDown size={15} />
+                      ) : (
+                        <ChevronRight size={15} />
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-text-secondary">
+                      {formatDate(log.createdAt)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {log.employee?.name || `EMP#${log.employeeId}`}
+                    </td>
+                    <td className={`px-3 py-3 font-semibold ${actionClass(log.action)}`}>
+                      {prettyAction(log.action)}
+                    </td>
+                    <td className="px-3 py-3 text-text-secondary">
+                      {log.entityType || "—"}
+                    </td>
+                    <td className="px-3 py-3 text-accent-gold">
+                      {log.entityId || "—"}
+                    </td>
+                  </tr>
 
-                      <td className="px-3 py-3 text-text-secondary">
-                        {formatDate(
-                          log.createdAt
-                        )}
-                      </td>
+                  {expanded === log.id && (
+                    <tr className="bg-background">
+                      <td colSpan={6} className="p-4">
+                        <div className="rounded-input border border-border bg-[#09090c] p-4">
+                          <div className="mb-2 flex items-center gap-2 text-accent-green">
+                            <Terminal size={14} />
+                            <span>METADATA</span>
+                          </div>
 
-                      <td className="px-3 py-3">
-                        {log.employee
-                          ?.name ||
-                          `EMP#${log.employeeId}`}
-                      </td>
-
-                      <td
-                        className={`px-3 py-3 font-semibold ${actionClass(
-                          log.action
-                        )}`}
-                      >
-                        {prettyAction(
-                          log.action
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3 text-text-secondary">
-                        {log.entityType ||
-                          "—"}
-                      </td>
-
-                      <td className="px-3 py-3 text-accent-gold">
-                        {log.entityId ||
-                          "—"}
+                          <pre className="overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-text-secondary">
+                            {JSON.stringify(log.details ?? {}, null, 2)}
+                          </pre>
+                        </div>
                       </td>
                     </tr>
-
-                    {expanded ===
-                      log.id && (
-                      <tr
-                        key={`${log.id}-detail`}
-                        className="bg-background"
-                      >
-                        <td
-                          colSpan={6}
-                          className="p-4"
-                        >
-                          <div className="rounded-input border border-border bg-[#09090c] p-4">
-                            <div className="mb-2 flex items-center gap-2 text-accent-green">
-                              <Terminal
-                                size={14}
-                              />
-
-                              <span>
-                                METADATA
-                              </span>
-                            </div>
-
-                            <pre className="overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-text-secondary">
-                              {JSON.stringify(
-                                log.details ??
-                                  {},
-                                null,
-                                2
-                              )}
-                            </pre>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                )
-              )}
+                  )}
+                </Fragment>
+              ))}
             </tbody>
           </table>
 
           {filtered.length === 0 && (
             <div className="p-10 text-center text-sm text-text-secondary">
-              No audit records are
-              available.
+              No audit records are available.
             </div>
           )}
         </div>

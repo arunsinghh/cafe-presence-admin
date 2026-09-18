@@ -28,6 +28,12 @@ const tones: Record<string, string> = {
   SUSPENDED:
     "text-accent-red bg-accent-red/10 border-accent-red/20",
 
+  REDEEMED:
+    "text-accent-blue bg-accent-blue/10 border-accent-blue/20",
+
+  EXPIRED:
+    "text-accent-red bg-accent-red/10 border-accent-red/20",
+
   ADMIN:
     "text-accent-gold bg-accent-gold/10 border-accent-gold/20",
 

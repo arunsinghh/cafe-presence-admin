@@ -26,6 +26,7 @@ export type VoucherStatus =
 export type VoucherType =
   | "PERCENTAGE"
   | "FLAT"
+  | "FIXED_AMOUNT"
   | "FREE_ITEM";
 
 export type PresenceResult =
@@ -34,8 +35,9 @@ export type PresenceResult =
   | "REJECTED";
 
 export type PresenceMethod =
-  | "QR"
+  | "GPS"
   | "LOCATION"
+  | "QR"
   | "GPS_QR"
   | "COMBINED";
 
@@ -45,8 +47,15 @@ export interface Employee {
   email: string;
   role: Role;
   isActive: boolean;
+  permissions?: EmployeePermission[];
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface EmployeePermission {
+  id?: number;
+  employeeId?: number;
+  permission: string;
 }
 
 export interface Device {
@@ -68,11 +77,21 @@ export interface Customer {
   phone: string;
   email?: string | null;
   status: CustomerStatus;
+  membership?: string;
+  membershipType?: string;
   approvedAt?: string | null;
   rejectedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   devices?: Device[];
+  customerVouchers?: CustomerVoucher[];
+  vouchers?: CustomerVoucher[];
+  _count?: {
+    devices?: number;
+    vouchers?: number;
+    customerVouchers?: number;
+    presenceLogs?: number;
+  };
 }
 
 export interface PresenceLog {
@@ -114,6 +133,7 @@ export interface Voucher {
   maxRedemptions?: number | null;
   redeemedCount?: number;
   status: VoucherStatus;
+  imageUrl?: string | null;
   startsAt?: string | null;
   expiresAt?: string | null;
   createdAt: string;
@@ -126,11 +146,23 @@ export interface CustomerVoucher {
   id: number;
   customerId: number;
   voucherId: number;
+  customerVoucherId?: number;
   status: VoucherStatus;
   issuedAt: string;
   redeemedAt?: string | null;
   expiresAt?: string | null;
+  validity?: string | null;
+  isRedeemed?: boolean;
+  image?: string | null;
+  imageUrl?: string | null;
   voucher?: Voucher;
+  name?: string;
+  code?: string;
+  title?: string;
+  description?: string | null;
+  details?: string | null;
+  type?: VoucherType;
+  value?: number | string | null;
   customer?: Pick<
     Customer,
     "id" | "name" | "phone"
@@ -160,3 +192,46 @@ export interface QrToken {
   expiresAt: string;
   consumedAt?: string | null;
 }
+
+export interface CafeConfig {
+  id: number;
+  cafeName: string;
+  latitude: number;
+  longitude: number;
+  allowedRadiusMeters: number;
+  qrValiditySeconds: number;
+  qrRotationSeconds: number;
+  loyaltyPointsPerUnit: number;
+  isPresenceEnabled: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface VerifyQrResponse {
+  valid: boolean;
+  sessionId?: number;
+  sessionToken?: string;
+  customerVoucher?: CustomerVoucher;
+  voucher?: Voucher;
+  customer?: Pick<Customer, "id" | "name" | "phone">;
+  message?: string;
+}
+
+export interface RedeemVoucherResponse {
+  success: boolean;
+  message: string;
+  customerVoucher?: CustomerVoucher;
+  redeemedAt?: string;
+}
+
+export interface Benefit {
+  id: number;
+  title: string;
+  description: string;
+  imageUrl?: string | null;
+  active: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+

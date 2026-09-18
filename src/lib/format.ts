@@ -54,3 +54,20 @@ export const prettyAction = (
 ): string => {
   return action.replace(/_/g, " ");
 };
+
+export const resolveImageUrl = (
+  url?: string | null
+): string => {
+  if (!url || typeof url !== "string") return "";
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("data:") ||
+    url.startsWith("blob:")
+  ) {
+    return url;
+  }
+  const cleanPath = url.startsWith("/") ? url : `/${url}`;
+  return `http://localhost:4000${cleanPath}`;
+};
+

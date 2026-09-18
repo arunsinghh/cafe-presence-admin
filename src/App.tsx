@@ -1,41 +1,27 @@
-import {
-  Navigate,
-  Route,
-  Routes
-} from "react-router-dom";
+import { lazy, Suspense } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 
-import {
-  useAuthStore
-} from "./store/auth.store";
-
+import { useAuthStore } from "./store/auth.store";
 import AppLayout from "./layouts/AppLayout";
+import Loading from "./components/Loading";
 
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Customers from "./pages/Customers";
-import Devices from "./pages/Devices";
-import Presence from "./pages/Presence";
-import Vouchers from "./pages/Vouchers";
-import Employees from "./pages/Employees";
-import AuditLogs from "./pages/AuditLogs";
-import Settings from "./pages/Settings";
+const Login = lazy(() => import("./pages/Login"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Customers = lazy(() => import("./pages/Customers"));
+const Devices = lazy(() => import("./pages/Devices"));
+const Presence = lazy(() => import("./pages/Presence"));
+const Vouchers = lazy(() => import("./pages/Vouchers"));
+const VoucherRedemption = lazy(() => import("./pages/VoucherRedemption"));
+const Employees = lazy(() => import("./pages/Employees"));
+const AuditLogs = lazy(() => import("./pages/AuditLogs"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Benefits = lazy(() => import("./pages/Benefits"));
 
-function ProtectedRoute({
-  children
-}: {
-  children: React.ReactNode;
-}) {
-  const token = useAuthStore(
-    (state) => state.token
-  );
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((state) => state.token);
 
   if (!token) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-      />
-    );
+    return <Navigate to="/login" replace />;
   }
 
   return children;
@@ -43,79 +29,32 @@ function ProtectedRoute({
 
 export default function App() {
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={<Login />}
-      />
+    <Suspense fallback={<Loading label="Loading page..." />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
 
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        }
-      >
         <Route
-          path="/"
           element={
-            <Navigate
-              to="/dashboard"
-              replace
-            />
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
           }
-        />
+        >
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/customers" element={<Customers />} />
+          <Route path="/devices" element={<Devices />} />
+          <Route path="/presence" element={<Presence />} />
+          <Route path="/vouchers" element={<Vouchers />} />
+          <Route path="/redeem" element={<VoucherRedemption />} />
+          <Route path="/employees" element={<Employees />} />
+          <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/benefits" element={<Benefits />} />
+        </Route>
 
-        <Route
-          path="/dashboard"
-          element={<Dashboard />}
-        />
-
-        <Route
-          path="/customers"
-          element={<Customers />}
-        />
-
-        <Route
-          path="/devices"
-          element={<Devices />}
-        />
-
-        <Route
-          path="/presence"
-          element={<Presence />}
-        />
-
-        <Route
-          path="/vouchers"
-          element={<Vouchers />}
-        />
-
-        <Route
-          path="/employees"
-          element={<Employees />}
-        />
-
-        <Route
-          path="/audit-logs"
-          element={<AuditLogs />}
-        />
-
-        <Route
-          path="/settings"
-          element={<Settings />}
-        />
-      </Route>
-
-      <Route
-        path="*"
-        element={
-          <Navigate
-            to="/dashboard"
-            replace
-          />
-        }
-      />
-    </Routes>
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </Suspense>
   );
 }

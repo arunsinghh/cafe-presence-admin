@@ -1,22 +1,11 @@
-import {
-  type FormEvent,
-  useState,
-} from "react";
-
-import {
-  Coffee,
-  LockKeyhole,
-  Mail,
-  ShieldCheck,
-} from "lucide-react";
-
+import { type FormEvent, useState } from "react";
+import { Coffee, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import api, { TOKEN_KEY, apiMessage } from "../services/api";
-
+import api, { TOKEN_KEY, apiMessage, unwrapData } from "../services/api";
 import { useAuthStore } from "../store/auth.store";
-
 import type { Employee } from "../types";
+import ErrorBanner from "../components/ErrorBanner";
 
 export default function Login() {
   const [email, setEmail] = useState("admin@cafe.com");
@@ -25,65 +14,34 @@ export default function Login() {
   const [error, setError] = useState("");
 
   const navigate = useNavigate();
+  const setAuth = useAuthStore((state) => state.setAuth);
 
-  const setAuth = useAuthStore(
-    (state) => state.setAuth
-  );
-
-  const submit = async (
-    event: FormEvent
-  ) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-
     setError("");
     setBusy(true);
 
     try {
-      const response = await api.post(
-        "/auth/employee/login",
-        {
-          email,
-          password,
-        }
-      );
+      const response = await api.post("/auth/employee/login", {
+        email,
+        password
+      });
 
-      const payload =
-        response.data?.data ??
-        response.data;
+      const payload = unwrapData<{ token: string; employee: Employee }>(response);
 
       if (!payload?.token) {
-        throw new Error(
-          "Login token was not returned by the server."
-        );
+        throw new Error("Login token was not returned by the server.");
       }
 
-      const employee =
-        payload.employee as Employee;
+      const employee = payload.employee as Employee;
 
-      // IMPORTANT:
-      // Save JWT so Axios can attach it
-      // to all authenticated requests.
-      localStorage.setItem(
-        TOKEN_KEY,
-        payload.token
-      );
+      localStorage.setItem(TOKEN_KEY, payload.token);
+      setAuth(payload.token, employee);
 
-      // Store authentication state.
-      setAuth(
-        payload.token,
-        employee
-      );
-
-      // Navigate only after token is saved.
-      navigate("/dashboard", {
-        replace: true,
-      });
+      navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(
-        apiMessage(
-          requestError,
-          "Unable to sign in. Check your credentials."
-        )
+        apiMessage(requestError, "Unable to sign in. Check your credentials.")
       );
     } finally {
       setBusy(false);
@@ -100,19 +58,14 @@ export default function Login() {
             <Coffee size={27} />
           </div>
 
-          <h1 className="font-display text-3xl font-semibold">
-            The Secret Brew
-          </h1>
+          <h1 className="font-display text-3xl font-semibold">The Secret Brew</h1>
 
           <p className="mt-2 text-sm text-text-secondary">
             Private club operations console
           </p>
         </div>
 
-        <form
-          onSubmit={submit}
-          className="space-y-4"
-        >
+        <form onSubmit={submit} className="space-y-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
               Email
@@ -128,9 +81,7 @@ export default function Login() {
                 className="premium-input pl-10"
                 type="email"
                 value={email}
-                onChange={(event) =>
-                  setEmail(event.target.value)
-                }
+                onChange={(event) => setEmail(event.target.value)}
                 required
                 autoComplete="username"
               />
@@ -152,20 +103,14 @@ export default function Login() {
                 className="premium-input pl-10"
                 type="password"
                 value={password}
-                onChange={(event) =>
-                  setPassword(event.target.value)
-                }
+                onChange={(event) => setPassword(event.target.value)}
                 required
                 autoComplete="current-password"
               />
             </div>
           </label>
 
-          {error && (
-            <div className="rounded-input border border-accent-red/30 bg-accent-red/10 px-3 py-2.5 text-sm text-accent-red">
-              {error}
-            </div>
-          )}
+          <ErrorBanner message={error} />
 
           <button
             type="submit"
@@ -190,17 +135,13 @@ export default function Login() {
 
           <div className="space-y-2 font-mono text-[11px] text-text-secondary">
             <div className="rounded-input bg-background p-2.5">
-              <span className="text-accent-gold">
-                Admin:
-              </span>{" "}
-              admin@cafe.com / Admin@123
+              <span className="text-accent-gold">Admin:</span> admin@cafe.com /
+              Admin@123
             </div>
 
             <div className="rounded-input bg-background p-2.5">
-              <span className="text-accent-gold">
-                Staff:
-              </span>{" "}
-              staff@cafe.com / Staff@123
+              <span className="text-accent-gold">Staff:</span> staff@cafe.com /
+              Staff@123
             </div>
           </div>
         </div>

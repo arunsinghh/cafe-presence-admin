@@ -5,23 +5,38 @@ import {
   Smartphone,
   MapPinCheck,
   Ticket,
+  ScanLine,
   UserCog,
   TerminalSquare,
   Settings,
+  Sparkles,
   Coffee,
-  X
+  X,
+  type LucideIcon
 } from "lucide-react";
 
-const links = [
-  ["/dashboard", "Dashboard", BarChart3],
-  ["/customers", "Customers", Users],
-  ["/devices", "Devices", Smartphone],
-  ["/presence", "Presence", MapPinCheck],
-  ["/vouchers", "Vouchers", Ticket],
-  ["/employees", "Employees", UserCog],
-  ["/audit-logs", "Audit Logs", TerminalSquare],
-  ["/settings", "Settings", Settings]
-] as const;
+import { useAuthStore } from "../store/auth.store";
+import { hasPermission, type AppPermission } from "../lib/permissions";
+
+interface NavItem {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+  permissions?: AppPermission[];
+}
+
+const navItems: NavItem[] = [
+  { to: "/dashboard", label: "Dashboard", Icon: BarChart3, permissions: ["DASHBOARD_VIEW"] },
+  { to: "/customers", label: "Customers", Icon: Users, permissions: ["CUSTOMER_VIEW", "CUSTOMER_MANAGE"] },
+  { to: "/devices", label: "Devices", Icon: Smartphone, permissions: ["CUSTOMER_VIEW", "CUSTOMER_MANAGE"] },
+  { to: "/presence", label: "Presence", Icon: MapPinCheck, permissions: ["PRESENCE_VIEW", "PRESENCE_MANAGE"] },
+  { to: "/vouchers", label: "Vouchers", Icon: Ticket, permissions: ["VOUCHER_VIEW", "VOUCHER_MANAGE", "VOUCHER_CREATE"] },
+  { to: "/redeem", label: "Redeem", Icon: ScanLine, permissions: ["VOUCHER_REDEEM", "VOUCHER_MANAGE"] },
+  { to: "/employees", label: "Employees", Icon: UserCog, permissions: ["EMPLOYEE_VIEW", "EMPLOYEE_MANAGE"] },
+  { to: "/audit-logs", label: "Audit Logs", Icon: TerminalSquare, permissions: ["AUDIT_LOG_VIEW"] },
+  { to: "/benefits", label: "Benefits", Icon: Sparkles, permissions: ["CAFE_CONFIG_VIEW", "CAFE_CONFIG_MANAGE"] },
+  { to: "/settings", label: "Settings", Icon: Settings, permissions: ["CAFE_CONFIG_VIEW", "CAFE_CONFIG_MANAGE"] }
+];
 
 interface SidebarProps {
   open: boolean;
@@ -34,6 +49,8 @@ export default function Sidebar({
   collapsed,
   onClose
 }: SidebarProps) {
+  const employee = useAuthStore((state) => state.employee);
+  const visibleLinks = navItems.filter((item) => hasPermission(employee, item.permissions));
   return (
     <>
       <div
@@ -85,8 +102,8 @@ export default function Sidebar({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {links.map(
-            ([to, label, Icon]) => (
+          {visibleLinks.map(
+            ({ to, label, Icon }) => (
               <NavLink
                 key={to}
                 to={to}

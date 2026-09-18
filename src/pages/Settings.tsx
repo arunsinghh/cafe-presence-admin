@@ -1,9 +1,15 @@
+import { Link } from "react-router-dom";
 import {
+  ArrowRight,
   Database,
   Globe,
   Server,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from "lucide-react";
+
+import CafeConfigCard
+  from "../components/CafeConfigCard";
 
 const apiBase =
   import.meta.env.VITE_API_BASE_URL ||
@@ -51,6 +57,34 @@ export default function Settings() {
           title="Console"
           value="Local development · Vite"
         />
+      </div>
+
+      <div className="premium-card p-5 flex flex-col justify-between sm:flex-row sm:items-center gap-4 border-accent-gold/30 bg-accent-gold/5">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-input bg-surface flex items-center justify-center text-accent-gold shrink-0 border border-border">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <h3 className="font-display font-semibold text-base text-text-primary">
+              Benefits Management
+            </h3>
+            <p className="text-xs text-text-secondary">
+              Configure member perks, display orders, photos, and privileges for Classic Members.
+            </p>
+          </div>
+        </div>
+
+        <Link
+          to="/benefits"
+          className="gold-button self-start sm:self-auto text-xs py-2 px-3.5 inline-flex items-center gap-1.5"
+        >
+          Manage Benefits
+          <ArrowRight size={14} />
+        </Link>
+      </div>
+
+      <div>
+        <CafeConfigCard />
       </div>
     </div>
   );
