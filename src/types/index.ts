@@ -235,3 +235,11 @@ export interface Benefit {
   updatedAt?: string;
 }
 
+export interface RegisterCustomerInput {
+  name: string;
+  phone: string;
+  email?: string;
+  status?: CustomerStatus;
+}
+
+

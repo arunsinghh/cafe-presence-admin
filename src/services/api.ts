@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { CafeConfig, RedeemVoucherResponse, VerifyQrResponse } from "../types";
+import type { CafeConfig, Customer, RedeemVoucherResponse, RegisterCustomerInput, VerifyQrResponse } from "../types";
 
 export const TOKEN_KEY = "cafe_admin_token";
 export const LEGACY_TOKEN_KEY = "cafe_presence_admin_token";
@@ -124,4 +124,20 @@ export const voucherRedemptionAPI = {
     };
   }
 };
+
+export const customerAPI = {
+  async register(payload: RegisterCustomerInput): Promise<Customer> {
+    try {
+      const response = await api.post("/customers", payload);
+      return unwrapData<Customer>(response);
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        const fallback = await api.post("/customers/register", payload);
+        return unwrapData<Customer>(fallback);
+      }
+      throw err;
+    }
+  }
+};
+
 

@@ -11,15 +11,19 @@ import {
   Smartphone,
   Ticket,
   UserCheck,
+  UserPlus,
   UserRound,
   X
 } from "lucide-react";
 
-import api, { apiMessage, unwrapData } from "../services/api";
-import type { Customer, CustomerVoucher, Device, PresenceLog, Voucher } from "../types";
+import api, { apiMessage, customerAPI, unwrapData } from "../services/api";
+import type { Customer, CustomerStatus, CustomerVoucher, Device, PresenceLog, Voucher } from "../types";
+import { useAuthStore } from "../store/auth.store";
+import { hasPermission } from "../lib/permissions";
 
 import StatusBadge from "../components/StatusBadge";
 import Modal from "../components/Modal";
+import FormField from "../components/FormField";
 import Loading from "../components/Loading";
 import EmptyState from "../components/EmptyState";
 import SearchInput from "../components/SearchInput";
@@ -54,6 +58,30 @@ export default function Customers() {
   // Single customer issue voucher state
   const [singleIssueModalOpen, setSingleIssueModalOpen] = useState(false);
   const [singleVoucherId, setSingleVoucherId] = useState<number | "">("");
+
+  const me = useAuthStore((state) => state.employee);
+  const canManageCustomers = hasPermission(me, ["CUSTOMER_MANAGE"]);
+
+  // Registration state
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+  const [registerSubmitting, setRegisterSubmitting] = useState(false);
+  const [registerFormError, setRegisterFormError] = useState("");
+  const [registerFieldErrors, setRegisterFieldErrors] = useState<{
+    name?: string;
+    phone?: string;
+    email?: string;
+  }>({});
+  const [registerForm, setRegisterForm] = useState<{
+    name: string;
+    phone: string;
+    email: string;
+    status: "APPROVED" | "PENDING";
+  }>({
+    name: "",
+    phone: "",
+    email: "",
+    status: "APPROVED"
+  });
 
   const activeCustomerIdRef = useRef<number | null>(null);
   const isInitialMount = useRef(true);
@@ -319,6 +347,95 @@ export default function Customers() {
     }
   };
 
+  const validateRegisterForm = () => {
+    const errors: { name?: string; phone?: string; email?: string } = {};
+
+    const trimmedName = registerForm.name.trim();
+    if (!trimmedName) {
+      errors.name = "Customer name is required.";
+    } else if (trimmedName.length < 2) {
+      errors.name = "Customer name must be at least 2 characters.";
+    } else if (trimmedName.length > 100) {
+      errors.name = "Customer name cannot exceed 100 characters.";
+    }
+
+    const trimmedPhone = registerForm.phone.trim();
+    const phoneDigits = trimmedPhone.replace(/\D/g, "");
+    if (!trimmedPhone) {
+      errors.phone = "Phone number is required.";
+    } else if (phoneDigits.length < 7 || phoneDigits.length > 20) {
+      errors.phone = "Please enter a valid phone number (at least 7 digits).";
+    }
+
+    const trimmedEmail = registerForm.email.trim();
+    if (trimmedEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        errors.email = "Please enter a valid email address.";
+      }
+    }
+
+    return errors;
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegisterFormError("");
+
+    const errors = validateRegisterForm();
+    setRegisterFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      return;
+    }
+
+    setRegisterSubmitting(true);
+
+    try {
+      const newCustomer = await customerAPI.register({
+        name: registerForm.name.trim(),
+        phone: registerForm.phone.trim(),
+        email: registerForm.email.trim() || undefined,
+        status: registerForm.status as CustomerStatus
+      });
+
+      setRegisterModalOpen(false);
+      setRegisterForm({
+        name: "",
+        phone: "",
+        email: "",
+        status: "APPROVED"
+      });
+      setRegisterFieldErrors({});
+      setRegisterFormError("");
+
+      setSuccessMessage(`Customer "${newCustomer.name}" registered successfully!`);
+      setTimeout(() => setSuccessMessage(""), 4000);
+
+      // Cleanly refresh customer directory without reloading the page
+      await fetchCustomers(query, filter);
+
+      if (newCustomer?.id) {
+        setSelected(newCustomer);
+      }
+    } catch (requestError: any) {
+      const msg = apiMessage(requestError, "Failed to register customer.");
+      setRegisterFormError(msg);
+      if (msg.toLowerCase().includes("phone") || msg.toLowerCase().includes("contact")) {
+        setRegisterFieldErrors((prev) => ({
+          ...prev,
+          phone: msg
+        }));
+      } else if (msg.toLowerCase().includes("email")) {
+        setRegisterFieldErrors((prev) => ({
+          ...prev,
+          email: msg
+        }));
+      }
+    } finally {
+      setRegisterSubmitting(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return customers.filter((customer) => {
@@ -491,6 +608,21 @@ export default function Customers() {
             >
               <Ticket size={16} />
               Issue Voucher ({selectedCustomerIds.length})
+            </button>
+          )}
+
+          {canManageCustomers && (
+            <button
+              type="button"
+              onClick={() => {
+                setRegisterFormError("");
+                setRegisterFieldErrors({});
+                setRegisterModalOpen(true);
+              }}
+              className="gold-button"
+            >
+              <UserPlus size={16} />
+              Register Customer
             </button>
           )}
 
@@ -1169,6 +1301,207 @@ export default function Customers() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Register Customer Modal */}
+      <Modal
+        open={registerModalOpen}
+        onClose={() => {
+          if (!registerSubmitting) {
+            setRegisterModalOpen(false);
+            setRegisterFormError("");
+            setRegisterFieldErrors({});
+          }
+        }}
+        title="Register Customer"
+      >
+        <form onSubmit={handleRegisterSubmit} className="space-y-4">
+          <ErrorBanner message={registerFormError} />
+
+          <div className="border-b border-border/60 pb-2">
+            <h3 className="font-mono text-xs uppercase tracking-wider text-accent-gold">
+              Customer Information
+            </h3>
+          </div>
+
+          <FormField
+            label="Full Name"
+            required
+            error={registerFieldErrors.name}
+          >
+            <input
+              type="text"
+              placeholder="e.g. Alexander Vance"
+              value={registerForm.name}
+              onChange={(e) => {
+                setRegisterForm((prev) => ({ ...prev, name: e.target.value }));
+                if (registerFieldErrors.name) {
+                  setRegisterFieldErrors((prev) => ({ ...prev, name: undefined }));
+                }
+              }}
+              disabled={registerSubmitting}
+              className="premium-input"
+              autoFocus
+            />
+          </FormField>
+
+          <FormField
+            label="Phone / Contact Number"
+            required
+            error={registerFieldErrors.phone}
+          >
+            <input
+              type="tel"
+              placeholder="e.g. +91 98765 43210"
+              value={registerForm.phone}
+              onChange={(e) => {
+                setRegisterForm((prev) => ({ ...prev, phone: e.target.value }));
+                if (registerFieldErrors.phone) {
+                  setRegisterFieldErrors((prev) => ({ ...prev, phone: undefined }));
+                }
+              }}
+              disabled={registerSubmitting}
+              className="premium-input"
+            />
+          </FormField>
+
+          <FormField
+            label="Email Address"
+            error={registerFieldErrors.email}
+          >
+            <input
+              type="email"
+              placeholder="e.g. alexander@example.com (optional)"
+              value={registerForm.email}
+              onChange={(e) => {
+                setRegisterForm((prev) => ({ ...prev, email: e.target.value }));
+                if (registerFieldErrors.email) {
+                  setRegisterFieldErrors((prev) => ({ ...prev, email: undefined }));
+                }
+              }}
+              disabled={registerSubmitting}
+              className="premium-input"
+            />
+          </FormField>
+
+          {/* Membership Tier - Strictly Classic Member */}
+          <div className="rounded-input border border-border bg-background/50 p-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-text-secondary">
+                  Membership Tier
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-text-primary">
+                  Classic Member
+                </p>
+              </div>
+              <span className="rounded-full border border-accent-gold/40 bg-accent-gold/15 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-accent-gold">
+                CLASSIC MEMBER
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] text-text-secondary">
+              All registered members are enrolled with standard club privileges.
+            </p>
+          </div>
+
+          {/* Initial Account Status */}
+          <FormField label="Initial Account Status">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setRegisterForm((prev) => ({ ...prev, status: "APPROVED" }))
+                }
+                disabled={registerSubmitting}
+                className={`flex items-center gap-2.5 rounded-input border p-3 text-left transition ${
+                  registerForm.status === "APPROVED"
+                    ? "border-accent-gold bg-accent-gold/10 text-text-primary"
+                    : "border-border bg-background/50 text-text-secondary hover:border-text-secondary/40"
+                }`}
+              >
+                <CheckCircle2
+                  size={16}
+                  className={
+                    registerForm.status === "APPROVED"
+                      ? "text-accent-gold shrink-0"
+                      : "text-text-secondary shrink-0"
+                  }
+                />
+                <div>
+                  <p className="text-xs font-semibold">Approved</p>
+                  <p className="text-[10px] text-text-secondary">
+                    Immediate access
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setRegisterForm((prev) => ({ ...prev, status: "PENDING" }))
+                }
+                disabled={registerSubmitting}
+                className={`flex items-center gap-2.5 rounded-input border p-3 text-left transition ${
+                  registerForm.status === "PENDING"
+                    ? "border-accent-gold bg-accent-gold/10 text-text-primary"
+                    : "border-border bg-background/50 text-text-secondary hover:border-text-secondary/40"
+                }`}
+              >
+                <Clock
+                  size={16}
+                  className={
+                    registerForm.status === "PENDING"
+                      ? "text-accent-gold shrink-0"
+                      : "text-text-secondary shrink-0"
+                  }
+                />
+                <div>
+                  <p className="text-xs font-semibold">Pending</p>
+                  <p className="text-[10px] text-text-secondary">
+                    Requires staff approval
+                  </p>
+                </div>
+              </button>
+            </div>
+          </FormField>
+
+          <p className="text-[11px] text-text-secondary/60">
+            Note: Per the one-device policy, the member's trusted device will be registered automatically upon their initial application login.
+          </p>
+
+          <div className="mt-5 flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={registerSubmitting}
+              onClick={() => {
+                setRegisterModalOpen(false);
+                setRegisterFormError("");
+                setRegisterFieldErrors({});
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              className="gold-button"
+              disabled={registerSubmitting}
+            >
+              {registerSubmitting ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" />
+                  Registering...
+                </>
+              ) : (
+                <>
+                  <UserPlus size={16} />
+                  Register Customer
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
