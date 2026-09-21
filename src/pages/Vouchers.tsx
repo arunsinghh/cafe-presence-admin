@@ -77,6 +77,7 @@ export default function Vouchers() {
   // Multi-customer selection state
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
   const [customerQuery, setCustomerQuery] = useState("");
+  const [customersLoading, setCustomersLoading] = useState(false);
 
   // Create form state
   const [form, setForm] = useState<VoucherForm>(initialForm);
@@ -88,24 +89,30 @@ export default function Vouchers() {
   const [editExistingImageUrl, setEditExistingImageUrl] = useState<string | null>(null);
   const [removeImageOnEdit, setRemoveImageOnEdit] = useState(false);
 
+  const fetchCustomersIfNeeded = useCallback(async () => {
+    if (customers.length > 0) return;
+    setCustomersLoading(true);
+    try {
+      const customerResponse = await api.get("/customers?limit=100");
+      const custRes = unwrapData<{ customers?: Customer[] } | Customer[]>(customerResponse);
+      const customerList = Array.isArray(custRes) ? custRes : (custRes?.customers ?? []);
+      setCustomers(customerList);
+    } catch {
+      // ignore
+    } finally {
+      setCustomersLoading(false);
+    }
+  }, [customers.length]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const [voucherResponse, customerResponse] = await Promise.all([
-        api.get("/vouchers?limit=100"),
-        api.get("/customers?limit=100")
-      ]);
-
+      const voucherResponse = await api.get("/vouchers?limit=100");
       const vouchRes = unwrapData<{ vouchers?: Voucher[] } | Voucher[]>(voucherResponse);
       const voucherList = Array.isArray(vouchRes) ? vouchRes : (vouchRes?.vouchers ?? []);
-
-      const custRes = unwrapData<{ customers?: Customer[] } | Customer[]>(customerResponse);
-      const customerList = Array.isArray(custRes) ? custRes : (custRes?.customers ?? []);
-
       setVouchers(voucherList);
-      setCustomers(customerList);
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {
@@ -240,6 +247,7 @@ export default function Vouchers() {
     setIssue(voucher);
     setSelectedCustomerIds([]);
     setCustomerQuery("");
+    void fetchCustomersIfNeeded();
   };
 
   const toggleCustomer = (customerId: number) => {
@@ -892,7 +900,11 @@ export default function Vouchers() {
 
           {/* Member Selection List */}
           <div className="max-h-64 overflow-y-auto space-y-1.5 p-1">
-            {filteredApprovedCustomers.length > 0 ? (
+            {customersLoading ? (
+              <div className="p-6 text-center text-xs text-text-secondary font-mono">
+                Loading member directory…
+              </div>
+            ) : filteredApprovedCustomers.length > 0 ? (
               filteredApprovedCustomers.map((customer) => {
                 const isSelected = selectedCustomerIds.includes(customer.id);
                 return (

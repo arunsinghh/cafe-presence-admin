@@ -88,6 +88,29 @@ export default function Customers() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const searchReqIdRef = useRef(0);
 
+  // In-memory cache for fast, zero-delay customer detail switching
+  const customerDetailsCache = useRef<
+    Map<
+      number,
+      {
+        customer: Customer;
+        devices: Device[];
+        vouchers: CustomerVoucher[];
+        history: PresenceLog[];
+        cachedAt: number;
+      }
+    >
+  >(new Map());
+  const detailsAbortRef = useRef<AbortController | null>(null);
+
+  const invalidateCustomerCache = useCallback((customerId?: number) => {
+    if (customerId) {
+      customerDetailsCache.current.delete(customerId);
+    } else {
+      customerDetailsCache.current.clear();
+    }
+  }, []);
+
   const normalizeStatus = (status?: string | null) => {
     if (!status) return "";
     const s = status.toUpperCase();
@@ -157,32 +180,51 @@ export default function Customers() {
     return fetchCustomers(query, filter);
   }, [fetchCustomers, query, filter]);
 
-  const loadCustomerDetails = useCallback(async (customerId: number) => {
+  const loadCustomerDetails = useCallback(async (customerId: number, forceRefresh = false) => {
     activeCustomerIdRef.current = customerId;
+
+    // Check cache first for instant 0ms switching
+    if (!forceRefresh) {
+      const cached = customerDetailsCache.current.get(customerId);
+      const isFresh = cached && Date.now() - cached.cachedAt < 120000;
+      if (isFresh) {
+        setDevices(cached.devices);
+        setVouchers(cached.vouchers);
+        setHistory(cached.history);
+        setDetailsLoading(false);
+        return;
+      }
+    }
+
+    if (detailsAbortRef.current) {
+      detailsAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    detailsAbortRef.current = controller;
+
     setDetailsLoading(true);
-    // Clear details immediately so no stale data from previous selections remains
     setDevices([]);
     setVouchers([]);
     setHistory([]);
 
     try {
-      const [customerRes, vouchersRes, historyRes, devicesRes] = await Promise.allSettled([
-        api.get(`/customers/${customerId}`),
-        api.get(`/customers/${customerId}/vouchers`),
-        api.get(`/presence/logs?customerId=${customerId}&limit=10`),
-        api.get(`/devices/customer/${customerId}`)
+      // /customers/:id includes devices and vouchers with nested relations.
+      // Fetch presence history concurrently. Only 2 requests total instead of 4!
+      const [customerRes, historyRes] = await Promise.allSettled([
+        api.get(`/customers/${customerId}`, { signal: controller.signal }),
+        api.get(`/presence/logs?customerId=${customerId}&limit=10`, { signal: controller.signal })
       ]);
 
-      // Guard against race conditions: if active customer changed, discard
       if (activeCustomerIdRef.current !== customerId) {
         return;
       }
 
       let customerVouchersList: CustomerVoucher[] = [];
       let customerDevices: Device[] = [];
+      let customerData: Customer | null = null;
 
       if (customerRes.status === "fulfilled") {
-        const customerData = unwrapData<Customer & { customerVouchers?: CustomerVoucher[]; vouchers?: CustomerVoucher[] }>(customerRes.value);
+        customerData = unwrapData<Customer & { customerVouchers?: CustomerVoucher[]; vouchers?: CustomerVoucher[] }>(customerRes.value);
         if (customerData) {
           if (Array.isArray(customerData.devices) && customerData.devices.length > 0) {
             customerDevices = customerData.devices;
@@ -195,33 +237,29 @@ export default function Customers() {
         }
       }
 
-      if (customerDevices.length === 0 && devicesRes.status === "fulfilled") {
-        const devData = unwrapData<Device[]>(devicesRes.value);
-        if (Array.isArray(devData)) {
-          customerDevices = devData;
-        }
-      }
-
-      if (customerVouchersList.length === 0 && vouchersRes.status === "fulfilled") {
-        const vData = unwrapData<{ vouchers?: CustomerVoucher[]; customerVouchers?: CustomerVoucher[] } | CustomerVoucher[]>(vouchersRes.value);
-        if (Array.isArray(vData)) {
-          customerVouchersList = vData;
-        } else if (vData && Array.isArray((vData as any).vouchers)) {
-          customerVouchersList = (vData as any).vouchers;
-        } else if (vData && Array.isArray((vData as any).customerVouchers)) {
-          customerVouchersList = (vData as any).customerVouchers;
-        }
+      let customerHistory: PresenceLog[] = [];
+      if (historyRes.status === "fulfilled") {
+        const histData = unwrapData<{ logs?: PresenceLog[] } | PresenceLog[]>(historyRes.value);
+        customerHistory = Array.isArray(histData) ? histData : (histData?.logs ?? []);
       }
 
       setDevices(customerDevices);
       setVouchers(customerVouchersList);
+      setHistory(customerHistory);
 
-      if (historyRes.status === "fulfilled") {
-        const histData = unwrapData<{ logs?: PresenceLog[] } | PresenceLog[]>(historyRes.value);
-        const customerHistory = Array.isArray(histData) ? histData : (histData?.logs ?? []);
-        setHistory(customerHistory);
+      if (customerData) {
+        customerDetailsCache.current.set(customerId, {
+          customer: customerData,
+          devices: customerDevices,
+          vouchers: customerVouchersList,
+          history: customerHistory,
+          cachedAt: Date.now()
+        });
       }
-    } catch (requestError) {
+    } catch (requestError: any) {
+      if (requestError?.name === "CanceledError" || requestError?.code === "ERR_CANCELED") {
+        return;
+      }
       if (activeCustomerIdRef.current === customerId) {
         setError(apiMessage(requestError));
       }
@@ -291,7 +329,8 @@ export default function Customers() {
       setTimeout(() => setSuccessMessage(""), 4000);
 
       // Refresh customer profile from the authoritative backend
-      await loadCustomerDetails(selected.id);
+      invalidateCustomerCache(selected.id);
+      await loadCustomerDetails(selected.id, true);
       void load();
     } catch (requestError) {
       setError(apiMessage(requestError, "Failed to issue voucher"));
@@ -335,9 +374,10 @@ export default function Customers() {
       );
       setTimeout(() => setSuccessMessage(""), 5000);
 
+      invalidateCustomerCache();
       // Refresh current customer if selected and reload list
       if (selected) {
-        await loadCustomerDetails(selected.id);
+        await loadCustomerDetails(selected.id, true);
       }
       void load();
     } catch (requestError) {
@@ -463,8 +503,10 @@ export default function Customers() {
     } else {
       setSelected((curr) => {
         if (!curr) return filtered[0];
-        const stillInList = filtered.find((c) => c.id === curr.id);
-        return stillInList || filtered[0];
+        if (filtered.some((c) => c.id === curr.id)) {
+          return curr;
+        }
+        return filtered[0];
       });
     }
   }, [filtered]);
@@ -480,7 +522,8 @@ export default function Customers() {
       setReplaceConfirm(null);
       setSuccessMessage("Device replaced successfully. Customer can now register a new device.");
       setTimeout(() => setSuccessMessage(""), 4000);
-      await loadCustomerDetails(selected.id);
+      invalidateCustomerCache(selected.id);
+      await loadCustomerDetails(selected.id, true);
       void load();
     } catch (requestError) {
       setError(apiMessage(requestError, "Failed to replace device"));
@@ -522,7 +565,8 @@ export default function Customers() {
     try {
       await api.post(`/devices/${confirm.id}/approve`);
       setConfirm(null);
-      await loadCustomerDetails(selected.id);
+      invalidateCustomerCache(selected.id);
+      await loadCustomerDetails(selected.id, true);
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {
@@ -538,7 +582,8 @@ export default function Customers() {
 
     try {
       await api.post(`/devices/${deviceId}/revoke`);
-      await loadCustomerDetails(selected.id);
+      invalidateCustomerCache(selected.id);
+      await loadCustomerDetails(selected.id, true);
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {
@@ -554,8 +599,9 @@ export default function Customers() {
 
     try {
       await api.post(`/customers/${selected.id}/approve`);
+      invalidateCustomerCache(selected.id);
       await load();
-      await loadCustomerDetails(selected.id);
+      await loadCustomerDetails(selected.id, true);
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {
@@ -571,8 +617,9 @@ export default function Customers() {
 
     try {
       await api.post(`/customers/${selected.id}/suspend`);
+      invalidateCustomerCache(selected.id);
       await load();
-      await loadCustomerDetails(selected.id);
+      await loadCustomerDetails(selected.id, true);
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {

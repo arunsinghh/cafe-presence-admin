@@ -28,50 +28,86 @@ import StatusBadge from "../components/StatusBadge";
 import Loading from "../components/Loading";
 import ErrorBanner from "../components/ErrorBanner";
 
+interface DashboardCache {
+  customers: Customer[];
+  totalCustomers: number;
+  devices: Device[];
+  logs: PresenceLog[];
+  audits: AuditLog[];
+  cachedAt: number;
+}
+
+let dashboardCache: DashboardCache | null = null;
+
 export default function Dashboard() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [logs, setLogs] = useState<PresenceLog[]>([]);
-  const [audits, setAudits] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>(() => dashboardCache?.customers ?? []);
+  const [totalCustomers, setTotalCustomers] = useState<number>(() => dashboardCache?.totalCustomers ?? 0);
+  const [devices, setDevices] = useState<Device[]>(() => dashboardCache?.devices ?? []);
+  const [logs, setLogs] = useState<PresenceLog[]>(() => dashboardCache?.logs ?? []);
+  const [audits, setAudits] = useState<AuditLog[]>(() => dashboardCache?.audits ?? []);
+  const [loading, setLoading] = useState(() => !dashboardCache || Date.now() - dashboardCache.cachedAt > 30000);
   const [error, setError] = useState("");
 
   const navigate = useNavigate();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (force = false) => {
+    if (!force && dashboardCache && Date.now() - dashboardCache.cachedAt < 30000) {
+      return;
+    }
+    if (!dashboardCache) {
+      setLoading(true);
+    }
     setError("");
 
     try {
-      const [customerResponse, presenceResponse, auditResponse, pendingDeviceResponse] = await Promise.all([
+      const [customerRes, presenceRes, auditRes, pendingDeviceRes] = await Promise.allSettled([
         api.get("/customers?limit=100"),
         api.get("/presence/logs?limit=100"),
-        api.get("/employees/audit-logs?limit=10").catch(() => null),
-        api.get("/devices/pending").catch(() => null)
+        api.get("/employees/audit-logs?limit=10"),
+        api.get("/devices/pending")
       ]);
 
-      const custRes = unwrapData<{ customers?: Customer[] } | Customer[]>(customerResponse);
-      const customerData: Customer[] = Array.isArray(custRes) ? custRes : (custRes?.customers ?? []);
+      let customerData: Customer[] = [];
+      let totalCount = 0;
+      if (customerRes.status === "fulfilled") {
+        const rawCust = customerRes.value?.data;
+        const custRes = unwrapData<{ customers?: Customer[]; pagination?: { total?: number } } | Customer[]>(customerRes.value);
+        customerData = Array.isArray(custRes) ? custRes : (custRes?.customers ?? []);
+        totalCount = (rawCust?.pagination?.total ?? (custRes as any)?.pagination?.total) ?? customerData.length;
+      }
 
-      const presRes = unwrapData<{ logs?: PresenceLog[] } | PresenceLog[]>(presenceResponse);
-      const presenceData: PresenceLog[] = Array.isArray(presRes) ? presRes : (presRes?.logs ?? []);
+      let presenceData: PresenceLog[] = [];
+      if (presenceRes.status === "fulfilled") {
+        const presRes = unwrapData<{ logs?: PresenceLog[] } | PresenceLog[]>(presenceRes.value);
+        presenceData = Array.isArray(presRes) ? presRes : (presRes?.logs ?? []);
+      }
 
       let auditData: AuditLog[] = [];
-      if (auditResponse) {
-        const audRes = unwrapData<{ logs?: AuditLog[] } | AuditLog[]>(auditResponse);
+      if (auditRes.status === "fulfilled") {
+        const audRes = unwrapData<{ logs?: AuditLog[] } | AuditLog[]>(auditRes.value);
         auditData = Array.isArray(audRes) ? audRes : (audRes?.logs ?? []);
       }
 
       let pendingDeviceData: Device[] = [];
-      if (pendingDeviceResponse) {
-        const devRes = unwrapData<Device[]>(pendingDeviceResponse);
+      if (pendingDeviceRes.status === "fulfilled") {
+        const devRes = unwrapData<Device[]>(pendingDeviceRes.value);
         pendingDeviceData = Array.isArray(devRes) ? devRes : [];
       }
 
       setCustomers(customerData);
+      setTotalCustomers(totalCount);
       setLogs(presenceData);
       setAudits(auditData);
       setDevices(pendingDeviceData);
+
+      dashboardCache = {
+        customers: customerData,
+        totalCustomers: totalCount,
+        devices: pendingDeviceData,
+        logs: presenceData,
+        audits: auditData,
+        cachedAt: Date.now()
+      };
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {
@@ -128,7 +164,7 @@ export default function Dashboard() {
   const stats = useMemo(() => [
     {
       label: "Total Customers",
-      value: customers.length,
+      value: totalCustomers || customers.length,
       icon: Users,
       note: "Registered members"
     },
@@ -150,7 +186,7 @@ export default function Dashboard() {
       icon: CheckCircle2,
       note: "Presence events"
     }
-  ], [customers.length, activeDevicesCount, pendingApprovals, todayLogs.length]);
+  ], [totalCustomers, customers.length, activeDevicesCount, pendingApprovals, todayLogs.length]);
 
   if (loading) {
     return <Loading label="Loading command center" />;
@@ -174,7 +210,7 @@ export default function Dashboard() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => void load(true)}
             className="ghost-button"
           >
             <RefreshCw size={16} />

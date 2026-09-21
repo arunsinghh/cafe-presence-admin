@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import {
   BarChart3,
@@ -50,7 +51,10 @@ export default function Sidebar({
   onClose
 }: SidebarProps) {
   const employee = useAuthStore((state) => state.employee);
-  const visibleLinks = navItems.filter((item) => hasPermission(employee, item.permissions));
+  const visibleLinks = useMemo(
+    () => navItems.filter((item) => hasPermission(employee, item.permissions)),
+    [employee]
+  );
   return (
     <>
       <div
