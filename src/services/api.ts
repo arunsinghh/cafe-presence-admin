@@ -5,7 +5,7 @@ export const TOKEN_KEY = "cafe_admin_token";
 export const LEGACY_TOKEN_KEY = "cafe_presence_admin_token";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "https://cafe-presence-backend-production.up.railway.app/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
