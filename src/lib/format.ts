@@ -68,6 +68,10 @@ export const resolveImageUrl = (
     return url;
   }
   const cleanPath = url.startsWith("/") ? url : `/${url}`;
-  return `http://localhost:4000${cleanPath}`;
+  const base = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "");
+  if (cleanPath.startsWith("/api/")) {
+    return cleanPath;
+  }
+  return `${base}${cleanPath}`;
 };
 
